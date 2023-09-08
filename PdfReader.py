@@ -112,6 +112,32 @@ class PdfReader:
 
         return result_text
 
+    def line_iterator(self, line_part:bytes):
+        line_part = line_part.replace(b'\r\n',b'')
+        line_split_r = line_part.split(b'\r')
+        curr_index = 0
+        N = len(line_split_r)
+        while curr_index<N:
+            line = line_split_r[curr_index]
+            r_index = line.rfind(b'>>')
+            if r_index == -1:
+                yield line
+            else:            
+                if r_index + 2 != len(line):
+                    yield line[0:r_index+2]
+                    yield line[r_index+2:]
+            curr_index += 1
+    
+    def get_count_chars(self,text:bytes,chars:bytes):
+        count_result = 0
+        left_index = -1
+        left_index = text.find(chars)
+        while left_index != -1:
+            count_result += 1
+            left_index = text.find(chars,left_index+1)
+        return count_result
+        
+    
     def print_raw_pdf(self, path_file:str, is_show_all = False):
         '''
         is_show_all - True - показывать всю длину строки, иначе показывать, только первые 100 символов
@@ -119,48 +145,52 @@ class PdfReader:
 
         assert os.path.isfile(path_file), f'file not exists {path_file=}'
 
-        start = b'stream'
-        end = b'endstream'
+        start_stream_token = b'stream'
+        end_stream_token = b'endstream'
 
         data = b''
+        data_for_dict = b''
         is_start = False
+        is_start_dictionaryOption = False
         curr_obj_dict = {}
         line_show = 0
         max_line_show = 5
+        count_start_left_angle = 0
         with open(path_file,'rb') as f:
-            for line in f.readlines():
-                line = line.replace(b'\r\n',b'')
+            for line_part in f.readlines():
+                self.debug_print(f'{line_part=}')
+                for line in self.line_iterator(line_part):
+                    self.debug_print(f'{line=}')
+                    if line.startswith(b'<</'):
+                        count_start_left_angle += self.get_count_chars(line,b'<<')
+                        is_start_dictionaryOption = True                        
+                        self.debug_print(f'is start <<, {count_start_left_angle=}')
 
-                if line.startswith(b'<<'):
-                    curr_obj_dict = self.dictionaryOption.parse_dict(line)
-                    print(f'\t{curr_obj_dict=}')
-
-                if line == end:
-                    is_start = False
-                    line_show = 0
-                    if data == b'':
-                        continue
-                    if curr_obj_dict.get('/FlateDecode',False) == True:
-                        print('\t----try uncompress'+'-'*10)
-                        try:
-                            res = ''
-                            assert int(curr_obj_dict['/Length']) == len(data), f"{curr_obj_dict['/Length']=} != {len(data)=}"
-                            f = zlib.decompress(data)
+                    if line == end_stream_token:
+                        is_start = False
+                        line_show = 0
+                        if data == b'':
+                            continue
+                        if curr_obj_dict.get('/FlateDecode',False) == True:
+                            print('\t----try uncompress'+'-'*10)
                             try:
-                                res = f.decode('UTF-8')
-                                print(f'\t\t{res=}')
+                                res = ''
+                                assert int(curr_obj_dict['/Length']) == len(data), f"{curr_obj_dict['/Length']=} != {len(data)=}"
+                                f = zlib.decompress(data)
+                                try:
+                                    res = f.decode('UTF-8')
+                                    print(f'\t\t{res=}')
+                                except Exception as ex:
+                                    print('\t\tERROR convert to UTF-8:')
+                                    print('\t\t',ex)
+                                    res = f
+                                    print(f'\t\t{len(res)=}')
                             except Exception as ex:
-                                print('\t\tERROR convert to UTF-8:')
-                                print('\t\t',ex)
-                                res = f
-                                print(f'\t\t{len(res)=}')
-                        except Exception as ex:
-                            print('\tERROR:')
-                            print('\t',ex)
-                        print('\t-'*10)
-                    data = b''
+                                print('\tERROR:')
+                                print('\t',ex)
+                            print('\t','-'*10)
+                        data = b''
 
-                if not line.startswith(b'<<'):
                     start_tab = ''
                     if is_start:
                         start_tab = '\t'
@@ -175,11 +205,27 @@ class PdfReader:
                                 line_show+=1
                             print(f'{start_tab}{line[:100]}{more}')
 
-                if is_start:
-                    data += line
+                    if is_start:
+                        data += line
+                        
+                    if is_start_dictionaryOption:
+                        if line.endswith(b'\n'):
+                            line = line[:-1]
+                        data_for_dict += line
+                        
+                        count_start_left_angle -= self.get_count_chars(line,b'<<')
+                        
+                        if line.endswith(b'>>'):
+                            self.debug_print(f'is end >>, {count_start_left_angle=}')
+                            if count_start_left_angle == 0:
+                                is_start_dictionaryOption = False
+                                curr_obj_dict = self.dictionaryOption.parse_dict(data_for_dict)
+                                data_for_dict = b''
+                                print(f'\t{curr_obj_dict=}')
+                            
 
-                if line == start:
-                    is_start = True
+                    if line == start_stream_token:
+                        is_start = True
 
     def unicod_to_str(self, unicode_hex):
         utf8_string = ''.join([chr(int(unicode_hex[i:i+4], 16)) for i in range(0, len(unicode_hex), 4)])

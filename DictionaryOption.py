@@ -11,7 +11,9 @@ class DictionaryOption:
         
     def to_str(self, bytes_data: bytes):
         result = chardet.detect(bytes_data)
-        detected_encoding = result['encoding']    
+        detected_encoding = result['encoding']
+        if detected_encoding is None:
+            return bytes_data
         decoded_string = bytes_data.decode(detected_encoding)
         return decoded_string
         
@@ -82,7 +84,12 @@ class DictionaryOption:
             
             if not is_start_sub_params and c == b')':
                 start_param_value = False
-                obj[str(param,'utf-8')] = self.to_str(param_value.strip())
+                param_str = ''
+                try:
+                    param_str = str(param,'utf-8')
+                except Exception as ex:
+                    print(ex)
+                obj[param_str] = self.to_str(param_value.strip())
                 param_value = b''
                 param = b''
                 
