@@ -33,9 +33,32 @@ class TestCalculator(unittest.TestCase):
         print(res)
         count_line = len(res)
         
-        self.assertEqual(count_line, 6)
+        self.assertEqual(count_line, 7)
         
         self.assertEqual(res[-1], b'stream')
+
+    def test_split_line_1(self):
+        line_part=b'/Rotate 0 >>\n'
+        r = pdr.PdfReader()
+        res = list(r.line_iterator(line_part))
+        print(res)
+        count_line = len(res)
+        
+        self.assertEqual(count_line, 1)
+    
+    def test_split_line_2(self):
+        r = pdr.PdfReader()
+        line_part=b'rtre\ndfdsfs\n'
+        res = list(r.line_iterator(line_part))
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], b'rtre\ndfdsfs')
+    def test_split_line_3(self):
+        r = pdr.PdfReader()
+        line_part=b'rtre\ndfd\rsfs\n'
+        res = list(r.line_iterator(line_part, True))
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], b'rtre\ndfd\rsfs')
+        
         
     def test_get_count_chars(self):
         r = pdr.PdfReader()        
@@ -50,5 +73,14 @@ class TestCalculator(unittest.TestCase):
         line=b'<</De<</Cs 5/Pr 12>>/Fil/Fl/ID[<4><7>]/Ix[3 4]/Io 2 0 R/Lh 185/Prev 7/Root 4 0 R/Size 7/Type/XRef/W[1 3 1]>>'
         
         curr_obj_dict = dictionaryOption.parse_dict(line)
+
+    def test_parse_dict_1(self):
+        lines = [
+            b'<< /Type /XObject /Subtype /Image /Width 1468 /Height 1987 /Interpolate true\n'
+            , b'/ColorSpace 6 0 R /Intent /Perceptual /BitsPerComponent 8 /Length 3155389\n'
+            , b'/Filter /DCTDecode >>'
+        ]
+        for line in lines:
+            print(line)
         
         
