@@ -361,6 +361,36 @@ class PdfReader:
         return result_text
 
 
+    def line_terator(self,path_file:str):
+        start_stream_token = b'stream'
+        end_stream_token = b'endstream'
+        is_start_stream = False
+        is_prev_start_stream = False
+        is_end_stream = False
+        with open(path_file,'rb') as file:
+            while True:
+                line_part = file.readline()
+                if not line_part:
+                    break
+                
+                for line in self.line_iterator(line_part, is_start_stream):
+                    
+                    if is_prev_start_stream:
+                        is_prev_start_stream = False
+                        is_start_stream = True
+
+                    if line == start_stream_token:
+                        is_prev_start_stream = True
+
+                    if is_end_stream:
+                        is_end_stream = False
+
+                    if line.startswith(end_stream_token):
+                        is_end_stream = True
+                        is_start_stream = False
+
+                    yield line, is_start_stream, is_end_stream
+
     def extract_images(self, path_file:str)->List[str]:   
 
         assert os.path.isfile(path_file), f'file not exists {path_file=}'
@@ -478,8 +508,8 @@ class PdfReader:
 # r = PdfReader(False)
 # path = r"data/TestDoc.pdf"
 # path = r"data/test_image.pdf"
-# path = r"C:\Users\aakorobov\Desktop\Docs\08. Паспорт.pdf"
+# #path = r"C:\Users\aakorobov\Desktop\Docs\08. Паспорт.pdf"
 # #r.print_raw_pdf(path)
-# r.extract_images(path)
+
 
 #%%
