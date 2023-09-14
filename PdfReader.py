@@ -20,10 +20,7 @@ class PdfReader:
 
         assert os.path.isfile(path_file), f'file not exists {path_file=}'
 
-        start = b'stream'
-        end = b'endstream'
         data = b''
-        is_start = False
         curr_obj_dict = {}
         ref_obj_content = b''
         ref_obj_toUnicode_array = []
@@ -33,76 +30,91 @@ class PdfReader:
         result_text = []
         map_chars = {}
         curr_page_number = 0
-        with open(path_file,'rb') as f:
-            for line in f.readlines():
-                self.debug_print(line)
-                line = line.replace(b'\r\n',b'')
-                if line.startswith(b'<<'):
-                    self.debug_print(f'{line=}')
-                    curr_obj_dict = self.dictionaryOption.parse_dict(line)
+        is_start_dictionaryOption = False
+        count_start_left_angle = 0
+        data_for_dict = b''
+        for line, is_start_stream, is_end_stream in self.all_line_iterator(path_file):
+            self.debug_print(f'{len(line)=}, {line=}, {is_start_stream=}, {is_end_stream=}')
 
-                    self.debug_print(f'{curr_obj_dict=}')
+            if line.startswith(b'<</') or line.startswith(b'<< /'):
+                count_start_left_angle += self.get_count_chars(line,b'<<')
+                is_start_dictionaryOption = True                        
+                self.debug_print(f'is start <<, {count_start_left_angle=}')
 
-                    if curr_obj_dict.get('/Type',False) == True and curr_obj_dict.get('/Page',False) == True:
-                        curr_page_number += 1
-                        if '/Contents' in curr_obj_dict:
-                            ref_obj_content = curr_obj_dict['/Contents'].replace(' R',' obj').encode('utf8')
-                            self.debug_print(f'{ref_obj_content=}')
-                    if '/ToUnicode' in curr_obj_dict:
-                        ref_obj_toUnicode = curr_obj_dict['/ToUnicode'].replace(' R',' obj').encode('utf8')
-                        ref_obj_toUnicode_array.append(ref_obj_toUnicode)
+            if is_start_dictionaryOption:
+                data_for_dict += line
+                count_start_left_angle -= self.get_count_chars(line,b'<<')
+                
+                if line.endswith(b'>>'):
+                    self.debug_print(f'is end >>, {count_start_left_angle=}')
+                    if count_start_left_angle == 0:
+                        is_start_dictionaryOption = False
+                        self.debug_print(f'{line=}')
+                        curr_obj_dict = self.dictionaryOption.parse_dict(data_for_dict)
 
-                elif line == ref_obj_content:
-                    is_start_content = True
-                    self.debug_print(f'{is_start_content=}')
+                        self.debug_print(f'{curr_obj_dict=}')
+                        data_for_dict = b''
 
-                elif line in ref_obj_toUnicode_array:
-                    is_start_toUnicode = True
-                    self.debug_print(f'{is_start_toUnicode=}')
+                        if curr_obj_dict.get('/Type',False) == True and curr_obj_dict.get('/Page',False) == True:
+                            curr_page_number += 1
+                            if '/Contents' in curr_obj_dict:
+                                ref_obj_content = curr_obj_dict['/Contents'].replace(' R',' obj').encode('utf8')
+                                self.debug_print(f'{ref_obj_content=}')
+                        if '/ToUnicode' in curr_obj_dict:
+                            ref_obj_toUnicode = curr_obj_dict['/ToUnicode'].replace(' R',' obj').encode('utf8')
+                            ref_obj_toUnicode_array.append(ref_obj_toUnicode)
 
-                elif line == end and (is_start_content or is_start_toUnicode):
-                    is_start = False
+            elif line == ref_obj_content:
+                is_start_content = True
+                self.debug_print(f'{is_start_content=}')
 
-                    if data == b'':
-                        self.debug_print('data is empty')
-                        continue
-                    self.debug_print('-'*10)
+            elif line in ref_obj_toUnicode_array:
+                is_start_toUnicode = True
+                self.debug_print(f'{is_start_toUnicode=}')
+
+            elif is_end_stream and (is_start_content or is_start_toUnicode):
+                if data == b'':
+                    self.debug_print('data is empty')
+                    continue
+                self.debug_print('-'*10)
+                try:
+                    if data.endswith(b'\r\n'):
+                       data = data[0:-2]
+                    elif data.endswith(b'\n'):
+                       data = data[0:-1]
+
+                    res = ''
+                    assert int(curr_obj_dict['/Length']) == len(data), f"{curr_obj_dict['/Length']=} != {len(data)=}"
+                    self.debug_print(f'{len(data)=}')
+                    f = zlib.decompress(data)
                     try:
-                        res = ''
-                        assert int(curr_obj_dict['/Length']) == len(data), f"{curr_obj_dict['/Length']=} != {len(data)=}"
-                        self.debug_print(f'{len(data)=}')
-                        f = zlib.decompress(data)
-                        try:
-                            res = f.decode('UTF-8')
-                            self.debug_print(f'{res=}')
+                        res = f.decode('UTF-8')
+                        self.debug_print(f'{res=}')
 
-                            if is_start_content:
-                                text_to_render.append(res)
-                            if is_start_toUnicode:
-                                new_map_chars = self.get_unicode_map_chars(res)
-                                map_chars.update(new_map_chars)
-                                self.debug_print(f'{len(map_chars)=}')
+                        if is_start_content:
+                            text_to_render.append(res)
+                        if is_start_toUnicode:
+                            new_map_chars = self.get_unicode_map_chars(res)
+                            map_chars.update(new_map_chars)
+                            self.debug_print(f'{len(map_chars)=}')
 
-                        except Exception as ex:
-                            print('ERROR convert to UTF-8:')
-                            print(ex)
-                            res = f
-                            print(f'{len(res)=}')
-                        self.debug_print(res)
                     except Exception as ex:
-                        print('ERROR:')
+                        print('ERROR convert to UTF-8:')
                         print(ex)
-                        print(data)
-                    self.debug_print('-'*10)
-                    data = b''
-                    if is_start_content: is_start_content = False
-                    if is_start_toUnicode: is_start_toUnicode = False
+                        res = f
+                        print(f'{len(res)=}')
+                    self.debug_print(res)
+                except Exception as ex:
+                    print('ERROR:')
+                    print(ex)
+                    print(data)
+                self.debug_print('-'*10)
+                data = b''
+                if is_start_content: is_start_content = False
+                if is_start_toUnicode: is_start_toUnicode = False
 
-                if is_start:
-                    data += line
-
-                if line == start and (is_start_content or is_start_toUnicode):
-                    is_start = True
+            if is_start_stream and (is_start_content or is_start_toUnicode):
+                data += line
 
         self.debug_print(f'{map_chars=}')
 
@@ -458,7 +470,5 @@ class PdfReader:
 
             if is_start_stream and is_jpeg_start_object:
                 data_stream += line
-
-
 
 #%%
