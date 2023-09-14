@@ -49,15 +49,35 @@ class TestCalculator(unittest.TestCase):
     def test_split_line_2(self):
         r = pdr.PdfReader()
         line_part=b'rtre\ndfdsfs\n'
-        res = list(r.line_iterator(line_part))
+        res = list(r.line_iterator(line_part, True))
+        print(f'{res=}')
         self.assertEqual(len(res), 1)
-        self.assertEqual(res[0], b'rtre\ndfdsfs')
+        self.assertEqual(res[0], b'rtre\ndfdsfs\n')
     def test_split_line_3(self):
         r = pdr.PdfReader()
         line_part=b'rtre\ndfd\rsfs\n'
         res = list(r.line_iterator(line_part, True))
+        print(f'{res=}')
         self.assertEqual(len(res), 1)
-        self.assertEqual(res[0], b'rtre\ndfd\rsfs')
+        self.assertEqual(res[0], b'rtre\ndfd\rsfs\n')
+    
+    def test_split_line_4(self):
+        r = pdr.PdfReader()
+        line_part=b'rtre\ndfdsfs\n'
+        res = list(r.line_iterator(line_part, False))
+        print(f'{res=}')
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0], b'rtre')
+        self.assertEqual(res[1], b'dfdsfs')
+    def test_split_line_5(self):
+        r = pdr.PdfReader()
+        line_part=b'rtre\ndfd\rsfs\n'
+        res = list(r.line_iterator(line_part, False))
+        print(f'{res=}')
+        self.assertEqual(len(res), 3)
+        self.assertEqual(res[0], b'rtre')
+        self.assertEqual(res[1], b'dfd')
+        self.assertEqual(res[2], b'sfs')
         
         
     def test_get_count_chars(self):

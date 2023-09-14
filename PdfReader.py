@@ -114,22 +114,17 @@ class PdfReader:
         return result_text
 
     def line_iterator(self, line_part:bytes,is_stream = False):
-        if line_part.endswith(b'\r\n'):
-            line_part = line_part[0:-2]
-        if not is_stream:
-            if line_part.endswith(b'\n'):
-                line_part = line_part[0:-1]
+        
+        # if line_part.endswith(b'\r\n'):
+        #     line_part = line_part[0:-2]
+        # if not is_stream:
+        #     if line_part.endswith(b'\n'):
+        #         line_part = line_part[0:-1]
         
         if is_stream:
             yield line_part
         else:
-            #line_part = line_part.replace(b'\r\n',b'').replace(b'\n',b'')
-            line_split_r = line_part.split(b'\r')
-            #print(f'{line_split_r=}')
-            curr_index = 0
-            N = len(line_split_r)
-            while curr_index < N:
-                line = line_split_r[curr_index]
+            for line in line_part.splitlines():
                 r_index = line.rfind(b'>>')
                 if r_index == -1:
                     yield line
@@ -139,7 +134,24 @@ class PdfReader:
                         yield line[r_index+2:]
                     else:
                         yield line
-                curr_index += 1
+            
+            # #line_part = line_part.replace(b'\r\n',b'').replace(b'\n',b'')
+            # line_split_r = line_part.split(b'\r')
+            # #print(f'{line_split_r=}')
+            # curr_index = 0
+            # N = len(line_split_r)
+            # while curr_index < N:
+            #     line = line_split_r[curr_index]
+            #     r_index = line.rfind(b'>>')
+            #     if r_index == -1:
+            #         yield line
+            #     else:            
+            #         if r_index + 2 != len(line):
+            #             yield line[0:r_index+2]
+            #             yield line[r_index+2:]
+            #         else:
+            #             yield line
+            #     curr_index += 1
     
     def get_count_chars(self,text:bytes,chars:bytes):
         count_result = 0
@@ -353,19 +365,15 @@ class PdfReader:
 
         assert os.path.isfile(path_file), f'file not exists {path_file=}'
 
-        start = b'stream'
-        end = b'endstream\n'
-        data = b''
-        is_start = False
+        start_stream_token = b'stream'
+        end_stream_token = b'endstream'
+        data_stream = b''
         curr_obj_dict = {}
-        ref_obj_content = b''
-        ref_obj_toUnicode_array = []
         is_start_content = False
         is_start_toUnicode = False
         text_to_render = []
         result_text = []
         map_chars = {}
-        curr_page_number = 0
         is_start_dictionaryOption = False
         is_jpeg_start_object = False
         is_jpeg_start = False
@@ -375,16 +383,16 @@ class PdfReader:
         max_line = 300
         curr_line = 0
         is_and_stream = False
-        res_text = open('res.txt','w')
+        #res_text = open('res.txt','w')
         with open(path_file,'rb') as f:
             for line_part in f.readlines():
                 
                 #if curr_line > max_line: break
                 curr_line += 1
                 self.debug_print(f'{line_part=}')
-                res_text.write(f'{line_part=}\n')
+                #res_text.write(f'{line_part=}\n')
                 for line in self.line_iterator(line_part, is_jpeg_start):
-                    self.debug_print(f'{line=}')
+                    self.debug_print(f'{len(line)=}, {line=}')
 
                     if line.startswith(b'<</') or line.startswith(b'<< /'):
                         count_start_left_angle += self.get_count_chars(line,b'<<')
@@ -393,8 +401,8 @@ class PdfReader:
 
 
                     if is_start_dictionaryOption:
-                        if line.endswith(b'\n'):
-                            line = line[:-1]
+                        # if line.endswith(b'\n'):
+                        #     line = line[:-1]
                         data_for_dict += line
                         
                         count_start_left_angle -= self.get_count_chars(line,b'<<')
@@ -413,31 +421,33 @@ class PdfReader:
                                     self.debug_print(f'{is_jpeg_start_object=}')
                     
                     
-                    elif line == end and is_jpeg_start:
+                    elif line.startswith(end_stream_token) and is_jpeg_start:
                         is_jpeg_start = False
                         is_and_stream= True
-                        if data == b'':
+                        if data_stream == b'':
                             self.debug_print('data is empty')
                             continue
                         self.debug_print('-'*10)
                         try:
                             res = ''
-                            assert int(curr_obj_dict['/Length']) == len(data), f"{curr_obj_dict['/Length']=} != {len(data)=} diff {int(curr_obj_dict['/Length']) - len(data)}"
-                            self.debug_print(f'{len(data)=}')
+                            data_stream = data_stream.rstrip(b'\r\n')
+                            assert int(curr_obj_dict['/Length']) == len(data_stream), f"{curr_obj_dict['/Length']=} != {len(data_stream)=} diff {int(curr_obj_dict['/Length']) - len(data_stream)}"
+                            self.debug_print(f'{len(data_stream)=}')
 
                             with open('img.jpeg','wb') as f:
-                                f.write(data)
+                                f.write(data_stream)
                             
                             self.debug_print(res)
                         except Exception as ex:
                             print('ERROR:')
                             print(ex)
-                            res_text.flush()
-                            res_text.close()
+                            #res_text.flush()
+                            #res_text.close()
+                            print(data_stream)
                             return None
-                            #print(data)
+                            
                         self.debug_print('-'*10)
-                        data = b''
+                        data_stream = b''
                         if is_start_content: is_start_content = False
                         if is_start_toUnicode: is_start_toUnicode = False
                         if is_jpeg_start_object: is_jpeg_start_object = False
@@ -445,9 +455,9 @@ class PdfReader:
                         break
 
                     if is_jpeg_start:
-                        data += line
+                        data_stream += line
 
-                    if line == start and is_jpeg_start_object:
+                    if line == start_stream_token and is_jpeg_start_object:
                         is_jpeg_start = True
 
                     if is_and_stream and line == b'endobj':
@@ -463,7 +473,11 @@ class PdfReader:
 
         return result_text
 
+# if os.path.exists('img.jpeg'):
+#     os.remove('img.jpeg')
 # r = PdfReader(False)
+# path = r"data/TestDoc.pdf"
+# path = r"data/test_image.pdf"
 # path = r"C:\Users\aakorobov\Desktop\Docs\08. Паспорт.pdf"
 # #r.print_raw_pdf(path)
 # r.extract_images(path)
