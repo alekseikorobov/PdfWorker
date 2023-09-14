@@ -75,3 +75,14 @@ b'stream'
 b'endstream'
 b'endobj'
 ```
+
+## Извлечение картинок
+```python
+from PdfReader import PdfReader
+reader = PdfReader()
+
+for i, data in enumerate(reader.extract_images(r"data/test_image.pdf")):
+    with open(f'data/img_{i}.jpeg','wb') as f:
+        f.write(data)
+    
+```

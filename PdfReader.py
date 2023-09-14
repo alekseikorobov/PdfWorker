@@ -361,7 +361,7 @@ class PdfReader:
         return result_text
 
 
-    def line_iterator(self,path_file:str):
+    def all_line_iterator(self, path_file:str):
         start_stream_token = b'stream'
         end_stream_token = b'endstream'
         is_start_stream = False
@@ -397,22 +397,12 @@ class PdfReader:
 
         data_stream = b''
         curr_obj_dict = {}
-        is_start_content = False
-        is_start_toUnicode = False
-        text_to_render = []
-        result_text = []
-        map_chars = {}
         is_start_dictionaryOption = False
         is_jpeg_start_object = False
-        is_jpeg_start = False
         count_start_left_angle = 0
         data_for_dict = b''
 
-        max_line = 300
-        curr_line = 0
-        is_and_stream = False
-        #res_text = open('res.txt','w')
-        for line, is_start_stream, is_end_stream in self.line_iterator(path_file):
+        for line, is_start_stream, is_end_stream in self.all_line_iterator(path_file):
             self.debug_print(f'{len(line)=}, {line=}, {is_start_stream=}, {is_end_stream=}')
 
             if line.startswith(b'<</') or line.startswith(b'<< /'):
@@ -422,10 +412,7 @@ class PdfReader:
 
 
             if is_start_dictionaryOption:
-                # if line.endswith(b'\n'):
-                #     line = line[:-1]
                 data_for_dict += line
-                
                 count_start_left_angle -= self.get_count_chars(line,b'<<')
                 
                 if line.endswith(b'>>'):
@@ -443,66 +430,35 @@ class PdfReader:
             
             
             elif is_end_stream and is_jpeg_start_object:
-                is_and_stream= True
                 if data_stream == b'':
                     self.debug_print('data is empty')
                     continue
                 self.debug_print('-'*10)
                 try:
-                    res = ''
-                    #print(data_stream)
                     if data_stream.endswith(b'\r\n'):
                        data_stream = data_stream[0:-2]
                     elif data_stream.endswith(b'\n'):
                        data_stream = data_stream[0:-1]
-                    #data_stream = data_stream.rstrip(b'\r\n')
-                    #data_stream += b'\n'
+
                     assert int(curr_obj_dict['/Length']) == len(data_stream), f"{curr_obj_dict['/Length']=} != {len(data_stream)=} diff {int(curr_obj_dict['/Length']) - len(data_stream)}"
                     self.debug_print(f'{len(data_stream)=}')
 
-                    with open('img.jpeg','wb') as f:
-                        f.write(data_stream)
-                    
-                    self.debug_print(res)
+                    yield data_stream
+
                 except Exception as ex:
                     print('ERROR:')
                     print(ex)
-                    #res_text.flush()
-                    #res_text.close()
                     print(data_stream)
                     return None
                     
                 self.debug_print('-'*10)
                 data_stream = b''
-                if is_start_content: is_start_content = False
-                if is_start_toUnicode: is_start_toUnicode = False
                 if is_jpeg_start_object: is_jpeg_start_object = False
 
-                break
 
             if is_start_stream and is_jpeg_start_object:
                 data_stream += line
 
-            if is_and_stream and line == b'endobj':
-                return []
-                    
 
-        self.debug_print(f'{map_chars=}')
-
-        for text_line in text_to_render:
-            result_texts = self.render_text(text_line, map_chars)
-            result_text.extend(result_texts)
-            self.debug_print(f'{result_texts=}')
-
-        return result_text
-
-# if os.path.exists('img.jpeg'):
-#     os.remove('img.jpeg')
-# r = PdfReader(False)
-# path = r"data/TestDoc.pdf"
-# path = r"data/test_image.pdf"
-# path = r"C:\Users\aakorobov\Desktop\Docs\08. Паспорт.pdf"
-# #r.print_raw_pdf(path)
-# r.extract_images(path)
 
 #%%
