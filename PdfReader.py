@@ -361,7 +361,7 @@ class PdfReader:
         return result_text
 
 
-    def line_terator(self,path_file:str):
+    def line_iterator(self,path_file:str):
         start_stream_token = b'stream'
         end_stream_token = b'endstream'
         is_start_stream = False
@@ -373,8 +373,8 @@ class PdfReader:
                 if not line_part:
                     break
                 
-                for line in self.line_iterator(line_part, is_start_stream):
-                    
+                for line in self.line_iterator(line_part, is_prev_start_stream or is_start_stream):
+                    #print(f'{line=}, {is_start_stream=}')
                     if is_prev_start_stream:
                         is_prev_start_stream = False
                         is_start_stream = True
@@ -395,8 +395,6 @@ class PdfReader:
 
         assert os.path.isfile(path_file), f'file not exists {path_file=}'
 
-        start_stream_token = b'stream'
-        end_stream_token = b'endstream'
         data_stream = b''
         curr_obj_dict = {}
         is_start_content = False
@@ -414,84 +412,79 @@ class PdfReader:
         curr_line = 0
         is_and_stream = False
         #res_text = open('res.txt','w')
-        with open(path_file,'rb') as f:
-            for line_part in f.readlines():
+        for line, is_start_stream, is_end_stream in self.line_iterator(path_file):
+            self.debug_print(f'{len(line)=}, {line=}, {is_start_stream=}, {is_end_stream=}')
+
+            if line.startswith(b'<</') or line.startswith(b'<< /'):
+                count_start_left_angle += self.get_count_chars(line,b'<<')
+                is_start_dictionaryOption = True                        
+                self.debug_print(f'is start <<, {count_start_left_angle=}')
+
+
+            if is_start_dictionaryOption:
+                # if line.endswith(b'\n'):
+                #     line = line[:-1]
+                data_for_dict += line
                 
-                #if curr_line > max_line: break
-                curr_line += 1
-                self.debug_print(f'{line_part=}')
-                #res_text.write(f'{line_part=}\n')
-                for line in self.line_iterator(line_part, is_jpeg_start):
-                    self.debug_print(f'{len(line)=}, {line=}')
+                count_start_left_angle -= self.get_count_chars(line,b'<<')
+                
+                if line.endswith(b'>>'):
+                    self.debug_print(f'is end >>, {count_start_left_angle=}')
+                    if count_start_left_angle == 0:
+                        is_start_dictionaryOption = False
+                        self.debug_print(f'{line=}')
+                        curr_obj_dict = self.dictionaryOption.parse_dict(data_for_dict)
 
-                    if line.startswith(b'<</') or line.startswith(b'<< /'):
-                        count_start_left_angle += self.get_count_chars(line,b'<<')
-                        is_start_dictionaryOption = True                        
-                        self.debug_print(f'is start <<, {count_start_left_angle=}')
+                        self.debug_print(f'{curr_obj_dict=}')
+                        data_for_dict = b''
+                        if '/DCTDecode' in curr_obj_dict:
+                            is_jpeg_start_object = True
+                            self.debug_print(f'{is_jpeg_start_object=}')
+            
+            
+            elif is_end_stream and is_jpeg_start_object:
+                is_and_stream= True
+                if data_stream == b'':
+                    self.debug_print('data is empty')
+                    continue
+                self.debug_print('-'*10)
+                try:
+                    res = ''
+                    #print(data_stream)
+                    if data_stream.endswith(b'\r\n'):
+                       data_stream = data_stream[0:-2]
+                    elif data_stream.endswith(b'\n'):
+                       data_stream = data_stream[0:-1]
+                    #data_stream = data_stream.rstrip(b'\r\n')
+                    #data_stream += b'\n'
+                    assert int(curr_obj_dict['/Length']) == len(data_stream), f"{curr_obj_dict['/Length']=} != {len(data_stream)=} diff {int(curr_obj_dict['/Length']) - len(data_stream)}"
+                    self.debug_print(f'{len(data_stream)=}')
 
-
-                    if is_start_dictionaryOption:
-                        # if line.endswith(b'\n'):
-                        #     line = line[:-1]
-                        data_for_dict += line
-                        
-                        count_start_left_angle -= self.get_count_chars(line,b'<<')
-                        
-                        if line.endswith(b'>>'):
-                            self.debug_print(f'is end >>, {count_start_left_angle=}')
-                            if count_start_left_angle == 0:
-                                is_start_dictionaryOption = False
-                                self.debug_print(f'{line=}')
-                                curr_obj_dict = self.dictionaryOption.parse_dict(data_for_dict)
-
-                                self.debug_print(f'{curr_obj_dict=}')
-                                data_for_dict = b''
-                                if '/DCTDecode' in curr_obj_dict:
-                                    is_jpeg_start_object = True
-                                    self.debug_print(f'{is_jpeg_start_object=}')
+                    with open('img.jpeg','wb') as f:
+                        f.write(data_stream)
                     
+                    self.debug_print(res)
+                except Exception as ex:
+                    print('ERROR:')
+                    print(ex)
+                    #res_text.flush()
+                    #res_text.close()
+                    print(data_stream)
+                    return None
                     
-                    elif line.startswith(end_stream_token) and is_jpeg_start:
-                        is_jpeg_start = False
-                        is_and_stream= True
-                        if data_stream == b'':
-                            self.debug_print('data is empty')
-                            continue
-                        self.debug_print('-'*10)
-                        try:
-                            res = ''
-                            data_stream = data_stream.rstrip(b'\r\n')
-                            assert int(curr_obj_dict['/Length']) == len(data_stream), f"{curr_obj_dict['/Length']=} != {len(data_stream)=} diff {int(curr_obj_dict['/Length']) - len(data_stream)}"
-                            self.debug_print(f'{len(data_stream)=}')
+                self.debug_print('-'*10)
+                data_stream = b''
+                if is_start_content: is_start_content = False
+                if is_start_toUnicode: is_start_toUnicode = False
+                if is_jpeg_start_object: is_jpeg_start_object = False
 
-                            with open('img.jpeg','wb') as f:
-                                f.write(data_stream)
-                            
-                            self.debug_print(res)
-                        except Exception as ex:
-                            print('ERROR:')
-                            print(ex)
-                            #res_text.flush()
-                            #res_text.close()
-                            print(data_stream)
-                            return None
-                            
-                        self.debug_print('-'*10)
-                        data_stream = b''
-                        if is_start_content: is_start_content = False
-                        if is_start_toUnicode: is_start_toUnicode = False
-                        if is_jpeg_start_object: is_jpeg_start_object = False
+                break
 
-                        break
+            if is_start_stream and is_jpeg_start_object:
+                data_stream += line
 
-                    if is_jpeg_start:
-                        data_stream += line
-
-                    if line == start_stream_token and is_jpeg_start_object:
-                        is_jpeg_start = True
-
-                    if is_and_stream and line == b'endobj':
-                        return []
+            if is_and_stream and line == b'endobj':
+                return []
                     
 
         self.debug_print(f'{map_chars=}')
@@ -508,8 +501,8 @@ class PdfReader:
 # r = PdfReader(False)
 # path = r"data/TestDoc.pdf"
 # path = r"data/test_image.pdf"
-# #path = r"C:\Users\aakorobov\Desktop\Docs\08. Паспорт.pdf"
+# path = r"C:\Users\aakorobov\Desktop\Docs\08. Паспорт.pdf"
 # #r.print_raw_pdf(path)
-
+# r.extract_images(path)
 
 #%%
